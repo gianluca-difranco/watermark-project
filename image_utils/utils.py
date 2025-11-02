@@ -81,12 +81,12 @@ def apply_watermark(input_path: str, output_dir: str,input_text: str = 'Hello Wo
 
 
 def draw_watermark_frame(img, input_text: str):
-    text_img = Image.new("L", img.size, color=255)
+    text_img = Image.new("L", img.size, color=0)
     draw = ImageDraw.Draw(text_img)
     font = ImageFont.load_default()
     text = input_text
     text_bbox = draw.textbbox((0, 0), text, font=font)
     x = (img.width - text_bbox[2]) // 2
     y = (img.height - text_bbox[3]) // 2
-    draw.text((x, y), text, fill=0, font=font)
+    draw.text((x, y), text, fill=255, font=font)
     return text_img
