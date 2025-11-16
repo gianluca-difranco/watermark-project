@@ -25,11 +25,11 @@ if __name__ == '__main__':
     print("Applico trasformazioni...")
 
     # a. Ridimensiona a una larghezza di 500px mantenendo le proporzioni
-    img_temp_1 = resize_image(img_originale, new_width=200, keep_aspect_ratio=True)
-    print(f"Dimensione dopo resize: {img_temp_1.size}")
+    #img_temp_1 = resize_image(img_originale, new_width=200, keep_aspect_ratio=True)
+    #print(f"Dimensione dopo resize: {img_temp_1.size}")
 
     # b. Ruota l'immagine di 15 gradi (espandendo per non tagliare i bordi)
-    # img_temp_2 = rotate_image(img_temp_1, angle=15, fill_color=(0, 0, 0))  # Riempi di nero
+    img_temp_2 = rotate_image(img_originale, angle=15, fill_color=(0, 0, 0))  # Riempi di nero
     #
     # # c. Ritaglia una regione centrale
     # # Per centrare, calcoliamo il box
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #
     # # --- 3. Salva e mostra il risultato ---
     output_path = "files/watermarked_transformed_output.png"
-    img_temp_1.save(output_path)
+    img_temp_2.save(output_path)
     # print(f"Immagine trasformata salvata in: {output_path}")
 
     # Apre l'immagine nel visualizzatore di default del tuo OS

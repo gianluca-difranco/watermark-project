@@ -33,11 +33,11 @@ class SpaceDomainWatermark:
         lsb_original_img = Image.fromarray(lsb_original.astype(np.uint8))
 
         # === Crea immagine con testo nero su sfondo bianco ===
-        text_img = self._draw_watermark_frame(img, watermark_data)
-
+        #text_img = self._draw_watermark_frame(img, watermark_data)
+        text_img = self._generate_text_watermark_image(img.width,img.height, watermark_data)
         # Converte in bit binari (1 per testo, 0 per sfondo)
         text_bits = np.array(text_img)
-        text_bits_bin = (text_bits < 128).astype(np.uint8)
+        text_bits_bin = text_bits.astype(np.uint8)
 
         # === Sostituisce i LSB del canale originale con il testo ===
         channel_modified = (channel & 254) | text_bits_bin
