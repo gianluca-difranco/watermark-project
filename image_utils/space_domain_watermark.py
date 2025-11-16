@@ -8,7 +8,7 @@ from classes import channels
 from image_utils.domain_watermark import DomainWatermark
 
 
-class SpaceDomainWatermark(DomainWatermark):
+class SpaceDomainWatermark:
 
 
     def __init__(self, input_image: str, output_dir: str = "files/space_domain_watermark"):
@@ -23,8 +23,7 @@ class SpaceDomainWatermark(DomainWatermark):
 
         # === Carica immagine e seleziona il canale BLUE ===
         img = Image.open(self.input_image).convert("RGB")
-        channel_index = channels.BLUE
-        channel = np.array(img)[:, :, channel_index]
+        channel = np.array(img)[:, :, channels.BLUE]
 
         # === Crea la versione originale in bianco e nero ===
         bw_original = Image.fromarray(channel.astype(np.uint8))
@@ -34,8 +33,7 @@ class SpaceDomainWatermark(DomainWatermark):
         lsb_original_img = Image.fromarray(lsb_original.astype(np.uint8))
 
         # === Crea immagine con testo nero su sfondo bianco ===
-        width, height = img.size
-        text_img = self._generate_text_watermark_image(width, height, watermark_data)
+        text_img = self._draw_watermark_frame(img, watermark_data)
 
         # Converte in bit binari (1 per testo, 0 per sfondo)
         text_bits = np.array(text_img)
@@ -56,15 +54,23 @@ class SpaceDomainWatermark(DomainWatermark):
         lsb_modified_img.save(os.path.join(self.output_dir, "lsb_modified.png"))
 
 
-    def show_watermark(self):
+    def show_watermark(self, transfomed_img_path=None):
 
         bw_original = Image.open(os.path.join(self.output_dir, "bw_original.png"))
         lsb_original_img= Image.open(os.path.join(self.output_dir, "lsb_original.png"))
         bw_modified = Image.open(os.path.join(self.output_dir, "bw_modified.png"))
         lsb_modified_img = Image.open(os.path.join(self.output_dir, "lsb_modified.png"))
+        if transfomed_img_path:
+            transformed_img = Image.open(transfomed_img_path)
+            channel = np.array(transformed_img)[:, :, channels.BLUE]
+
+
+            # === Estrae la matrice dei bit meno significativi (LSB) originali ===
+            trans_lsb_original = (channel & 1) * 255
+            trans_lsb_original_img = Image.fromarray(trans_lsb_original.astype(np.uint8))
 
         # === Mostra le immagini affiancate ===
-        plt.figure(figsize=(16, 8))
+        plt.figure(figsize=(20, 8))
 
         plt.subplot(1, 4, 1)
         plt.title("Originale (bianco e nero)")
@@ -85,6 +91,12 @@ class SpaceDomainWatermark(DomainWatermark):
         plt.title("LSB dopo inserimento testo")
         plt.imshow(lsb_modified_img, cmap="gray")
         plt.axis("off")
+
+        if transfomed_img_path:
+            plt.subplot(1, 4, 5)
+            plt.title("Trasformata")
+            plt.imshow(trans_lsb_original_img)
+            plt.axis("off")
 
         plt.tight_layout()
         plt.show()
