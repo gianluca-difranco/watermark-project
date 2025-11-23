@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pywt
 import cv2
@@ -9,12 +11,48 @@ def resize_watermark(wm, target_shape):
     return cv2.resize(wm, (target_shape[1], target_shape[0]), interpolation=cv2.INTER_LINEAR)
 
 
+# --- NUOVE FUNZIONI PER GESTIONE CHIAVE ---
+
+def save_key(path, embedding_data):
+    """Salva i dati necessari per l'estrazione in un file compresso .npz"""
+    np.savez_compressed(
+        path,
+        U_wm=embedding_data['U_wm'],
+        V_wm=embedding_data['V_wm'],
+        S_LL_orig=embedding_data['S_LL_orig'],
+        alpha=embedding_data['alpha'],
+        shape_wm=embedding_data['shape_wm']
+    )
+    print(f"[INFO] Chiave di watermarking salvata in: {path}")
+
+
+def load_key(path):
+    """Carica la chiave per l'estrazione"""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Impossibile trovare il file chiave: {path}")
+
+    data = np.load(path)
+    embedding_data = {
+        'U_wm': data['U_wm'],
+        'V_wm': data['V_wm'],
+        'S_LL_orig': data['S_LL_orig'],
+        'alpha': float(data['alpha']),
+        'shape_wm': tuple(data['shape_wm'])
+    }
+    return embedding_data
 # --- FASE DI INCORPORAMENTO ---
 
-def embed_watermark_dwt_svd(host_img, watermark_img, alpha=0.1):
+def embed_watermark_dwt_svd(host_path, watermark_path, alpha=0.1):
     """
     Incorpora la filigrana modificando i valori singolari (SVD) della sottobanda LL (DWT).
     """
+
+    host_img = cv2.imread(host_path, cv2.IMREAD_GRAYSCALE)
+    watermark_img = cv2.imread(watermark_path, cv2.IMREAD_GRAYSCALE)
+    if host_img is None or watermark_img is None:
+        print("ERRORE: Immagini non trovate. Inserisci 'lena_512.png' e 'watermark.png' nella cartella files/.")
+        return None, None
+
     # Pre-elaborazione
     host_img = host_img.astype(np.float32) / 255.0
     watermark_img = watermark_img.astype(np.float32) / 255.0
@@ -70,12 +108,17 @@ def embed_watermark_dwt_svd(host_img, watermark_img, alpha=0.1):
 
 # --- FASE DI ESTRAZIONE ---
 
-def extract_watermark_dwt_svd(attacked_img, embedding_data):
+def extract_watermark_dwt_svd(attacked_img, key_path=None, embedding_data=None):
     """
     Estrae la filigrana dall'immagine (potenzialmente attaccata).
     Richiede embedding_data (chiave) contenente i vettori singolari della filigrana
     e i valori singolari originali dell'host.
     """
+    if embedding_data is None:
+        if key_path is None:
+            raise ValueError("Devi fornire il percorso del file chiave (.npz) o i dati embedding_data.")
+        embedding_data = load_key(key_path)
+
     # Recupero dati chiave
     U_wm = embedding_data['U_wm']
     V_wm = embedding_data['V_wm']

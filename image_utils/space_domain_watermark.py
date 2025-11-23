@@ -1,3 +1,6 @@
+import sys
+
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
@@ -5,7 +8,6 @@ import os
 
 
 from classes import channels
-from image_utils.domain_watermark import DomainWatermark
 
 
 class SpaceDomainWatermark:
@@ -15,32 +17,31 @@ class SpaceDomainWatermark:
         self.input_image = input_image
         self.output_dir = output_dir
 
-
-    def apply_watermark(self, watermark_data: str):
+#cambiare l'input con un path di un immagine
+    def apply_watermark(self, watermark_image_path: str):
         """
         This function draw a word/phrase in image's LSB.
         """
 
         # === Carica immagine e seleziona il canale BLUE ===
-        img = Image.open(self.input_image).convert("RGB")
-        channel = np.array(img)[:, :, channels.BLUE]
+        # img = Image.open(self.input_image).convert("RGB")
+        # channel = np.array(img)[:, :, channels.BLUE]
 
+        bw_original = cv2.imread(self.input_image, cv2.IMREAD_GRAYSCALE)
         # === Crea la versione originale in bianco e nero ===
-        bw_original = Image.fromarray(channel.astype(np.uint8))
+        # bw_original = Image.fromarray(channel.astype(np.uint8))
 
         # === Estrae la matrice dei bit meno significativi (LSB) originali ===
-        lsb_original = (channel & 1) * 255
+        lsb_original = (bw_original & 1) * 255
         lsb_original_img = Image.fromarray(lsb_original.astype(np.uint8))
 
         # === Crea immagine con testo nero su sfondo bianco ===
         #text_img = self._draw_watermark_frame(img, watermark_data)
-        text_img = self._generate_text_watermark_image(img.width,img.height, watermark_data)
-        # Converte in bit binari (1 per testo, 0 per sfondo)
-        text_bits = np.array(text_img)
-        text_bits_bin = text_bits.astype(np.uint8)
-
+        #text_img = self._generate_text_watermark_image(img.width, img.height, watermark_image_path)
+        watermark_image = cv2.imread(watermark_image_path, cv2.IMREAD_GRAYSCALE)
+        msb_plane = (watermark_image >> 7) & 1
         # === Sostituisce i LSB del canale originale con il testo ===
-        channel_modified = (channel & 254) | text_bits_bin
+        channel_modified = (bw_original & 254) | msb_plane
 
         # === Ricrea immagine modificata e la sua versione dei LSB ===
         bw_modified = Image.fromarray(channel_modified.astype(np.uint8))
@@ -48,10 +49,10 @@ class SpaceDomainWatermark:
         lsb_modified_img = Image.fromarray(lsb_modified.astype(np.uint8))
         # === Salva i risultati ===
         os.makedirs(self.output_dir, exist_ok=True)
-        bw_original.save(os.path.join(self.output_dir, "bw_original.png"))
+        cv2.imwrite(os.path.join(self.output_dir, "bw_original.png"), bw_original)
         lsb_original_img.save(os.path.join(self.output_dir, "lsb_original.png"))
         bw_modified.save(os.path.join(self.output_dir, "bw_modified.png"))
-        lsb_modified_img.save(os.path.join(self.output_dir, "lsb_modified.png"))
+        lsb_modified_img.save(os.path.join(self.output_dir, "watermark.png"))
 
 
     def show_watermark(self, transfomed_img_path=None):
@@ -59,10 +60,10 @@ class SpaceDomainWatermark:
         bw_original = Image.open(os.path.join(self.output_dir, "bw_original.png"))
         lsb_original_img= Image.open(os.path.join(self.output_dir, "lsb_original.png"))
         bw_modified = Image.open(os.path.join(self.output_dir, "bw_modified.png"))
-        lsb_modified_img = Image.open(os.path.join(self.output_dir, "lsb_modified.png"))
+        lsb_modified_img = Image.open(os.path.join(self.output_dir, "watermark.png"))
         if transfomed_img_path:
             transformed_img = Image.open(transfomed_img_path)
-            channel = np.array(transformed_img)[:, :, channels.BLUE]
+            channel = np.array(transformed_img)[:, :]
 
 
             # === Estrae la matrice dei bit meno significativi (LSB) originali ===
@@ -75,31 +76,29 @@ class SpaceDomainWatermark:
         plt.subplot(1, 4, 1)
         plt.title("Originale (bianco e nero)")
         plt.imshow(bw_original, cmap="gray")
-        plt.axis("off")
 
         plt.subplot(1, 4, 2)
         plt.title("LSB originali")
         plt.imshow(lsb_original_img, cmap="gray")
         plt.axis("off")
 
-        plt.subplot(1, 4, 3)
+        plt.subplot(1, 4, 2)
         plt.title("Immagine con testo nei LSB")
         plt.imshow(bw_modified, cmap="gray")
-        plt.axis("off")
 
-        plt.subplot(1, 4, 4)
+        plt.subplot(1, 4, 3)
         plt.title("LSB dopo inserimento testo")
         plt.imshow(lsb_modified_img, cmap="gray")
-        plt.axis("off")
 
         if transfomed_img_path:
-            plt.subplot(1, 4, 5)
+            plt.subplot(1, 4, 4)
             plt.title("Trasformata")
             plt.imshow(trans_lsb_original_img)
-            plt.axis("off")
 
+        plt.axis("off")
         plt.tight_layout()
         plt.show()
+
 
 
     def _draw_watermark_frame(self, img, input_text: str):

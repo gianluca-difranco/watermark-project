@@ -1,46 +1,10 @@
 import cv2
-import numpy as np
 import os
-import sys
 from skimage.metrics import structural_similarity as ssim
+from image_utils.attacks_utils import apply_attacks
+from image_utils.robust_watermark import save_key
+from image_utils.robust_watermark import embed_watermark_dwt_svd, extract_watermark_dwt_svd
 
-# Assumiamo che il file sopra sia salvato come image_utils/space_domain_watermark.py
-# Se lo hai rinominato in robust_watermark.py, cambia l'import qui sotto.
-try:
-    from image_utils.robust_watermark import embed_watermark_dwt_svd, extract_watermark_dwt_svd
-except ImportError:
-    # Fallback se esegui lo script direttamente fuori dalla struttura module
-    print("Attenzione: Assicurati di essere nella root del progetto o che i percorsi siano corretti.")
-    sys.exit(1)
-
-
-def apply_attacks(image):
-    """Applica una serie di attacchi per testare la robustezza."""
-    attacks = {}
-
-    # 1. Compressione JPEG
-    encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]  # Qualità 50 (media)
-    _, encimg = cv2.imencode('.jpg', image, encode_param)
-    img_jpeg = cv2.imdecode(encimg, 0)  # 0 = load as grayscale
-    attacks['JPEG (Q=50)'] = img_jpeg
-
-    # 2. Rumore Sale e Pepe
-    noise = np.zeros(image.shape, np.uint8)
-    cv2.randu(noise, 0, 255)
-    img_noise = image.copy()
-    img_noise[noise < 10] = 0  # Pepper
-    img_noise[noise > 245] = 255  # Salt
-    attacks['Salt & Pepper'] = img_noise
-
-    # 3. Rotazione (Leggera) + Crop automatico (simulato dal resize implicito in visualizzazione)
-    # Nota: La rotazione pesante disallinea i pixel per la DWT.
-    # Senza un algoritmo di riallineamento, SVD resiste solo a piccole rotazioni.
-    rows, cols = image.shape
-    M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 2, 1)  # 2 gradi
-    img_rot = cv2.warpAffine(image, M, (cols, rows))
-    attacks['Rotation (2 deg)'] = img_rot
-
-    return attacks
 
 
 def main():
@@ -53,19 +17,18 @@ def main():
         os.makedirs(output_dir)
 
     # Caricamento
-    print(f"Caricamento {host_path} e {watermark_path}...")
-    host_img = cv2.imread(host_path, cv2.IMREAD_GRAYSCALE)
-    watermark_img = cv2.imread(watermark_path, cv2.IMREAD_GRAYSCALE)
+    # print(f"Caricamento {host_path} e {watermark_path}...")
+    # host_img = cv2.imread(host_path, cv2.IMREAD_GRAYSCALE)
 
-    if host_img is None or watermark_img is None:
-        print("ERRORE: Immagini non trovate. Inserisci 'lena_512.png' e 'watermark.png' nella cartella files/.")
-        return
+
+    watermark_img = cv2.imread(watermark_path, cv2.IMREAD_GRAYSCALE)
 
     # --- 1. EMBEDDING ---
     print("\n--- Avvio Embedding DWT-SVD ---")
     alpha = 0.1  # Forza della filigrana
-    watermarked_img, embedding_data = embed_watermark_dwt_svd(host_img, watermark_img, alpha=alpha)
-
+    watermarked_img, embedding_data = embed_watermark_dwt_svd(host_path, watermark_path, alpha=alpha)
+    # 4. Salva la CHIAVE (da tenere segreta sul tuo PC)
+    save_key('files/watermarked_img.npz', embedding_data)
     # Salva risultato
     cv2.imwrite(f'{output_dir}/watermarked_img.png', watermarked_img)
     print(f"Immagine watermarked salvata in {output_dir}")
@@ -86,7 +49,7 @@ def main():
         cv2.imwrite(f'{output_dir}/attacked_{safe_name}.png', attacked_img)
 
         # Estrazione
-        extracted_wm = extract_watermark_dwt_svd(attacked_img, embedding_data)
+        extracted_wm = extract_watermark_dwt_svd(attacked_img, key_path='files/watermarked_img.npz')
         cv2.imwrite(f'{output_dir}/extracted_from_{safe_name}.png', extracted_wm)
 
         # Calcolo similarità (SSIM)
