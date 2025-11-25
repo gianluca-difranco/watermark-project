@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pywt
 import cv2
+from pathlib import Path
 
 
 def resize_watermark(wm, target_shape):
@@ -42,13 +43,18 @@ def load_key(path):
     return embedding_data
 # --- FASE DI INCORPORAMENTO ---
 
-def embed_watermark_dwt_svd(host_path, watermark_path, alpha=0.1):
+def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
     """
     Incorpora la filigrana modificando i valori singolari (SVD) della sottobanda LL (DWT).
     """
 
-    host_img = cv2.imread(host_path, cv2.IMREAD_GRAYSCALE)
-    watermark_img = cv2.imread(watermark_path, cv2.IMREAD_GRAYSCALE)
+    input_image_str: str = str(input_image_path)
+    output_dir_path_str: str = str(output_dir_path)
+    watermark_image_path_str: str = str(watermark_image_path)
+    alpha = 0.1
+
+    host_img = cv2.imread(input_image_str, cv2.IMREAD_GRAYSCALE)
+    watermark_img = cv2.imread(watermark_image_path_str, cv2.IMREAD_GRAYSCALE)
     if host_img is None or watermark_img is None:
         print("ERRORE: Immagini non trovate. Inserisci 'lena_512.png' e 'watermark.png' nella cartella files/.")
         return None, None
@@ -102,8 +108,13 @@ def embed_watermark_dwt_svd(host_path, watermark_path, alpha=0.1):
         'alpha': alpha,
         'shape_wm': wm_resized.shape  # Utile per controlli
     }
+    # 4. Salva la CHIAVE (da tenere segreta sul tuo PC)
+    print(f"chiave qui {output_dir_path_str}/watermarked_img.npz")
+    save_key(os.path.join(output_dir_path_str,'watermarked_img.npz'), embedding_data)
+    # Salva risultato
+    cv2.imwrite(f'{output_dir_path_str}/watermarked_img.png', img_w)
 
-    return img_w, embedding_data
+    return Path(f'{output_dir_path_str}/watermarked_img.png')
 
 
 # --- FASE DI ESTRAZIONE ---
