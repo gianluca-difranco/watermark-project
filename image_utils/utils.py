@@ -1,7 +1,11 @@
+from typing import Tuple
+from numpy import ndarray
+from pathlib import Path
+from collections.abc import Callable
+from classes.dataclass import SaveAttackContext
 import cv2
 import numpy as np
-from image_utils.dwt_svd_frequence_watermark import extract_watermark_dwt_svd
-from pathlib import Path
+from skimage.metrics import structural_similarity as ssim
 
 
 def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
@@ -34,14 +38,34 @@ def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
     return attacks
 
 
-def save_attacks(attacks: dict[str,cv2.typing.MatLike], output_dir):
-    for attack_name, attacked_img in attacks.items():
+def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
+
+    output_file_dict : dict[str,Path] = {}
+    for attack_name, attacked_img in context.attacks.items():
         print(f"\nTestando attacco: {attack_name}")
-
-        # Salva immagine attaccata
         safe_name = attack_name.replace(" ", "_").replace("(", "").replace(")", "").replace("=", "")
-        cv2.imwrite(f'{output_dir}/attacked_{safe_name}.png', attacked_img)
+        attacked_path: Path = Path(f'{context.output_dir}/attacked_{safe_name}.png')
+        extracted_wm_path: Path = Path(f'{context.output_dir}/extracted_from_{safe_name}.png')
 
-        # Estrazione
-        extracted_wm = extract_watermark_dwt_svd(attacked_img, embedding_data)
-        cv2.imwrite(f'{output_dir}/extracted_from_{safe_name}.png', extracted_wm)
+
+        cv2.imwrite(str(attacked_path), attacked_img)
+        output_file_dict[f'attacked_{safe_name}.png'] = attacked_path
+
+        extracted_wm = context.extract_function(attacked_img, key_path=context.key_path)
+        cv2.imwrite(str(extracted_wm_path), extracted_wm)
+
+        output_file_dict[f'extracted_from_{safe_name}.png'] = extracted_wm_path
+
+
+    return output_file_dict
+
+
+def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
+    try:
+        score = ssim(img1, img2, data_range=255)
+        print(f"-> Qualità Filigrana Estratta (SSIM): {score:.4f}")
+    except ValueError as e:
+        print(f"-> Errore calcolo SSIM (dimensioni diverse?): {e}")
+        score = 0.0
+
+    return score

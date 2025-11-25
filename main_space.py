@@ -4,14 +4,9 @@ from pathlib import Path
 import cv2
 
 from image_utils.space_domain_watermark import apply_watermark
-from image_utils.attacks_utils import apply_attacks
+from image_utils.utils import apply_attacks
 
 from PIL import Image
-# Importa le funzioni che abbiamo appena scritto (assumendo che il file si chiami trasformazioni.py)
-from image_utils.transformation import resize_image, rotate_image, crop_image, flip_image, adjust_brightness, apply_blur
-import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-import matplotlib.pyplot as plt
 
 if __name__ == '__main__':
     input_image_path = Path('files/input.png')  # Metti qui la tua immagine host

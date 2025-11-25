@@ -5,6 +5,9 @@ import pywt
 import cv2
 from pathlib import Path
 
+from classes.dataclass import SaveAttackContext
+from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim
+
 
 def resize_watermark(wm, target_shape):
     """Ridimensiona la filigrana per adattarla alle dimensioni della sottobanda."""
@@ -27,12 +30,12 @@ def save_key(path, embedding_data):
     print(f"[INFO] Chiave di watermarking salvata in: {path}")
 
 
-def load_key(path):
+def load_key(path: Path):
     """Carica la chiave per l'estrazione"""
-    if not os.path.exists(path):
+    if not path.exists():
         raise FileNotFoundError(f"Impossibile trovare il file chiave: {path}")
 
-    data = np.load(path)
+    data = np.load(str(path))
     embedding_data = {
         'U_wm': data['U_wm'],
         'V_wm': data['V_wm'],
@@ -48,13 +51,10 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
     Incorpora la filigrana modificando i valori singolari (SVD) della sottobanda LL (DWT).
     """
 
-    input_image_str: str = str(input_image_path)
-    output_dir_path_str: str = str(output_dir_path)
-    watermark_image_path_str: str = str(watermark_image_path)
     alpha = 0.1
 
-    host_img = cv2.imread(input_image_str, cv2.IMREAD_GRAYSCALE)
-    watermark_img = cv2.imread(watermark_image_path_str, cv2.IMREAD_GRAYSCALE)
+    host_img = cv2.imread(str(input_image_path), cv2.IMREAD_GRAYSCALE)
+    watermark_img = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
     if host_img is None or watermark_img is None:
         print("ERRORE: Immagini non trovate. Inserisci 'lena_512.png' e 'watermark.png' nella cartella files/.")
         return None, None
@@ -109,17 +109,17 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
         'shape_wm': wm_resized.shape  # Utile per controlli
     }
     # 4. Salva la CHIAVE (da tenere segreta sul tuo PC)
-    print(f"chiave qui {output_dir_path_str}/watermarked_img.npz")
-    save_key(os.path.join(output_dir_path_str,'watermarked_img.npz'), embedding_data)
+    print(f"chiave qui {output_dir_path}/watermarked_img.npz")
+    save_key(output_dir_path/'watermarked_img.npz', embedding_data)
     # Salva risultato
-    cv2.imwrite(f'{output_dir_path_str}/watermarked_img.png', img_w)
+    cv2.imwrite(f'{output_dir_path}/watermarked_img.png', img_w)
 
-    return Path(f'{output_dir_path_str}/watermarked_img.png')
+    return output_dir_path / 'watermarked_img.png'
 
 
 # --- FASE DI ESTRAZIONE ---
 
-def extract_watermark_dwt_svd(attacked_img, key_path=None, embedding_data=None):
+def extract_watermark_dwt_svd(attacked_img, embedding_data=None, key_path=None):
     """
     Estrae la filigrana dall'immagine (potenzialmente attaccata).
     Richiede embedding_data (chiave) contenente i vettori singolari della filigrana
@@ -171,3 +171,31 @@ def extract_watermark_dwt_svd(attacked_img, key_path=None, embedding_data=None):
     wm_extracted = np.clip(wm_extracted * 255, 0, 255).astype(np.uint8)
 
     return wm_extracted
+
+
+
+def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, output_dir_path : Path) -> None:
+
+    if not output_dir_path.exists():
+        os.makedirs(output_dir_path)
+
+    watermark_img = cv2.imread(str(watermark_path), cv2.IMREAD_GRAYSCALE)
+
+
+    watermarked_img_path = apply_watermark(host_path, output_dir_path, watermark_path)
+
+    attacks = apply_attacks(watermarked_img_path)
+
+
+    key_path: Path = output_dir_path / 'watermarked_img.npz'
+    embedding_data = load_key(key_path)
+
+
+    wm_original_resized = cv2.resize(watermark_img,
+                                     embedding_data['shape_wm'])
+    context = SaveAttackContext(attacks, key_path, output_dir_path, extract_watermark_dwt_svd)
+    output_file_dict: dict[str,Path] = save_and_compare(context)
+
+    for key, value in output_file_dict.items():
+        if key.startswith('extracted'):
+            calculate_ssim(wm_original_resized, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))

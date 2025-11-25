@@ -13,11 +13,8 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
     """
     This function draw a word/phrase in image's LSB.
     """
-    input_image_str: str = str(input_image_path)
-    output_dir_path_str: str = str(output_dir_path)
-    watermark_image_path_str: str = str(watermark_image_path)
 
-    bw_original = cv2.imread(str(input_image_str), cv2.IMREAD_GRAYSCALE)
+    bw_original = cv2.imread(str(input_image_path), cv2.IMREAD_GRAYSCALE)
     # === Crea la versione originale in bianco e nero ===
     # bw_original = Image.fromarray(channel.astype(np.uint8))
 
@@ -26,7 +23,7 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
     lsb_original_img = Image.fromarray(lsb_original.astype(np.uint8))
 
     # === Crea immagine con testo nero su sfondo bianco ===
-    watermark_image = cv2.imread(watermark_image_path_str, cv2.IMREAD_GRAYSCALE)
+    watermark_image = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
     msb_plane = (watermark_image >> 7) & 1
     # === Sostituisce i LSB del canale originale con il testo ===
     channel_modified = (bw_original & 254) | msb_plane
@@ -36,11 +33,11 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
     lsb_modified = (channel_modified & 1) * 255
     lsb_modified_img = Image.fromarray(lsb_modified.astype(np.uint8))
     # === Salva i risultati ===
-    os.makedirs(output_dir_path_str, exist_ok=True)
-    cv2.imwrite(os.path.join(output_dir_path_str, "bw_original.png"), bw_original)
-    lsb_original_img.save(os.path.join(output_dir_path_str, "lsb_original.png"))
-    bw_modified.save(os.path.join(output_dir_path_str, "bw_modified.png"))
-    lsb_modified_img.save(os.path.join(output_dir_path_str, "watermark.png"))
+    os.makedirs(output_dir_path, exist_ok=True)
+    cv2.imwrite(f'{output_dir_path}/bw_original.png', bw_original)
+    lsb_original_img.save(f'{output_dir_path}/lsb_original.png')
+    bw_modified.save(f'{output_dir_path}/bw_modified.png')
+    lsb_modified_img.save(f'{output_dir_path}/watermark.png')
 
 
 def show_watermark(self, transfomed_img_path=None):
