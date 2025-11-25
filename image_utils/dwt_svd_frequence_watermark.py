@@ -119,16 +119,18 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
 
 # --- FASE DI ESTRAZIONE ---
 
-def extract_watermark_dwt_svd(attacked_img, embedding_data=None, key_path=None):
+def extract_watermark_dwt_svd(watermarked_image, **kwargs):
     """
     Estrae la filigrana dall'immagine (potenzialmente attaccata).
     Richiede embedding_data (chiave) contenente i vettori singolari della filigrana
     e i valori singolari originali dell'host.
     """
-    if embedding_data is None:
-        if key_path is None:
-            raise ValueError("Devi fornire il percorso del file chiave (.npz) o i dati embedding_data.")
-        embedding_data = load_key(key_path)
+    if 'embedding_data' in kwargs.keys():
+        embedding_data = kwargs['embedding_data']
+    elif 'key_path' in kwargs.keys():
+        embedding_data = load_key(kwargs['key_path'])
+    else:
+        raise ValueError("Devi fornire il percorso del file chiave (.npz) o i dati embedding_data.")
 
     # Recupero dati chiave
     U_wm = embedding_data['U_wm']
@@ -137,11 +139,11 @@ def extract_watermark_dwt_svd(attacked_img, embedding_data=None, key_path=None):
     alpha = embedding_data['alpha']
 
     # Pre-elaborazione immagine attaccata
-    attacked_img = attacked_img.astype(np.float32) / 255.0
-    if attacked_img.ndim == 3:
-        attacked_gray = cv2.cvtColor(attacked_img, cv2.COLOR_BGR2GRAY)
+    watermarked_image = watermarked_image.astype(np.float32) / 255.0
+    if watermarked_image.ndim == 3:
+        attacked_gray = cv2.cvtColor(watermarked_image, cv2.COLOR_BGR2GRAY)
     else:
-        attacked_gray = attacked_img
+        attacked_gray = watermarked_image
 
     # 1. DWT sull'immagine attaccata
     coeffs_att = pywt.dwt2(attacked_gray, 'haar')
@@ -179,10 +181,9 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
     if not output_dir_path.exists():
         os.makedirs(output_dir_path)
 
-    watermark_img = cv2.imread(str(watermark_path), cv2.IMREAD_GRAYSCALE)
 
 
-    watermarked_img_path = apply_watermark(host_path, output_dir_path, watermark_path)
+    watermarked_img_path: Path = apply_watermark(host_path, output_dir_path, watermark_path)
 
     attacks = apply_attacks(watermarked_img_path)
 
@@ -191,9 +192,10 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
     embedding_data = load_key(key_path)
 
 
-    wm_original_resized = cv2.resize(watermark_img,
+    wm_original_resized = cv2.resize(cv2.imread(str(watermark_path), cv2.IMREAD_GRAYSCALE),
                                      embedding_data['shape_wm'])
-    context = SaveAttackContext(attacks, key_path, output_dir_path, extract_watermark_dwt_svd)
+    extract_parameters = {'embedding_data':embedding_data,'key_path': key_path}
+    context = SaveAttackContext(attacks, output_dir_path, extract_watermark_dwt_svd, extract_parameters)
     output_file_dict: dict[str,Path] = save_and_compare(context)
 
     for key, value in output_file_dict.items():

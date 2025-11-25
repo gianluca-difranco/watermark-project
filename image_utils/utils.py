@@ -51,7 +51,7 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
         cv2.imwrite(str(attacked_path), attacked_img)
         output_file_dict[f'attacked_{safe_name}.png'] = attacked_path
 
-        extracted_wm = context.extract_function(attacked_img, key_path=context.key_path)
+        extracted_wm = context.extract_function(attacked_img, **context.extract_parameters)
         cv2.imwrite(str(extracted_wm_path), extracted_wm)
 
         output_file_dict[f'extracted_from_{safe_name}.png'] = extracted_wm_path
