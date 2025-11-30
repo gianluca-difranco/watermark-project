@@ -1,13 +1,11 @@
-import sys
-
 import cv2
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 import os
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim
+from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr
 
 
 #cambiare l'input con un path di un immagine
@@ -63,3 +61,4 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
             calculate_ssim(image_watermarked, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))
+            calculate_psnr(image_watermarked, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))

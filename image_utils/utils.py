@@ -1,7 +1,6 @@
-from typing import Tuple
 from numpy import ndarray
 from pathlib import Path
-from collections.abc import Callable
+import math
 from classes.dataclass import SaveAttackContext
 import cv2
 import numpy as np
@@ -69,3 +68,32 @@ def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
         score = 0.0
 
     return score
+
+
+def calculate_mse(imageA, imageB):
+    """
+    Mean Squared Error: Calcola la media degli errori quadrati tra i pixel corrispondenti.
+    Un valore più basso è migliore.
+    """
+    # Assicurarsi che le immagini siano float per evitare overflow
+    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
+    err /= float(imageA.shape[0] * imageA.shape[1])
+    print(f"MSE: {err:.4f}")
+    return err
+
+
+def calculate_psnr(imageA, imageB):
+    """
+    Peak Signal-to-Noise Ratio: Misura il rapporto tra la potenza massima del segnale e il rumore.
+    Valori sopra i 30dB indicano solitamente un'ottima qualità invisibile.
+    """
+    mse = calculate_mse(imageA, imageB)
+
+    # Se le immagini sono identiche, MSE è 0 e PSNR è infinito
+    if mse == 0:
+        return 100
+
+    max_pixel = 255.0
+    psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
+    print(f"PSNR: {psnr:.4f}")
+    return psnr
