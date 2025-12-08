@@ -53,10 +53,10 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
 
     alpha = 0.1
 
-    host_img = cv2.imread(str(input_image_path), cv2.IMREAD_GRAYSCALE)
-    watermark_img = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
+    host_img = cv2.imread(str(input_image_path))
+    watermark_img = cv2.imread(str(watermark_image_path))
     if host_img is None or watermark_img is None:
-        print("ERRORE: Immagini non trovate. Inserisci 'lena_512.png' e 'watermark.png' nella cartella files/.")
+        print("ERRORE: Immagini non trovate.")
         return None, None
 
     # Pre-elaborazione
@@ -117,6 +117,106 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
     return output_dir_path / 'watermarked_img.png'
 
 
+def apply_watermark_color_svd(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
+    """
+    Incorpora la filigrana modificando i valori singolari (SVD) della sottobanda LL (DWT)
+    su TUTTI i canali (RGB).
+    """
+    alpha = 0.1  # Fattore di forza del watermark
+
+    # 1. Caricamento Immagini
+    # Host a colori (BGR)
+    host_img = cv2.imread(str(input_image_path))
+    # Watermark in scala di grigi (più stabile per SVD)
+    watermark_img = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
+
+    if host_img is None or watermark_img is None:
+        print("ERRORE: Immagini non trovate.")
+        return None
+
+    # Pre-elaborazione: Convertiamo in float32 per i calcoli matematici
+    host_img = host_img.astype(np.float32) / 255.0
+    watermark_img = watermark_img.astype(np.float32) / 255.0
+
+    # 2. Separazione dei canali (Blue, Green, Red)
+    channels = cv2.split(host_img)
+
+    watermarked_channels = []
+    S_LL_orig_list = []  # Qui salveremo i valori S originali per ogni canale
+
+    # Variabili per salvare i vettori del watermark (basta calcolarli una volta)
+    U_wm_save, V_wm_save = None, None
+    wm_shape_save = None
+
+    # 3. Elaborazione per ogni canale
+    for channel in channels:
+        # --- A. DWT (Discrete Wavelet Transform) ---
+        coeffs = pywt.dwt2(channel, 'haar')
+        LL, (LH, HL, HH) = coeffs
+
+        # --- B. Preparazione Watermark ---
+        # Ridimensiona il watermark per matchare la dimensione di LL (che è metà dell'originale)
+        wm_resized = resize_watermark(watermark_img, LL.shape)
+        if wm_shape_save is None:
+            wm_shape_save = wm_resized.shape
+
+        # --- C. SVD sull'Host (LL subband) ---
+        U_LL, S_LL, V_LL = np.linalg.svd(LL, full_matrices=False)
+
+        # Salviamo la S originale di questo canale per l'estrazione futura
+        S_LL_orig_list.append(S_LL)
+
+        # --- D. SVD sul Watermark ---
+        # Nota: facciamo la SVD del watermark ogni volta, ma matematicamente è identica.
+        # Salviamo U e V solo alla prima iterazione per il file chiave.
+        U_wm, S_wm, V_wm = np.linalg.svd(wm_resized, full_matrices=False)
+        if U_wm_save is None:
+            U_wm_save, V_wm_save = U_wm, V_wm
+
+        # --- E. Embedding ---
+        # Formula: S_new = S_host + alpha * S_watermark
+        S_LL_new = S_LL + (alpha * S_wm)
+
+        # --- F. Ricostruzione (Inverse SVD) ---
+        Sigma_LL_new = np.diag(S_LL_new)
+        LL_w = np.dot(U_LL, np.dot(Sigma_LL_new, V_LL))
+
+        # --- G. IDWT (Inverse DWT) ---
+        coeffs_w = LL_w, (LH, HL, HH)
+        channel_w = pywt.idwt2(coeffs_w, 'haar')
+
+        watermarked_channels.append(channel_w)
+
+    # 4. Unione dei canali (Merge)
+    img_w_merged = cv2.merge(watermarked_channels)
+
+    # Clipping finale per assicurarsi di essere nel range 0-255 e conversione a uint8
+    img_w_final = np.clip(img_w_merged * 255, 0, 255).astype(np.uint8)
+
+    # 5. Salvataggio
+    os.makedirs(output_dir_path, exist_ok=True)
+
+    output_png = output_dir_path / 'watermarked_img.png'
+    output_key = output_dir_path / 'watermarked_img.npz'
+
+    cv2.imwrite(str(output_png), img_w_final)
+
+    # 6. Creazione della Chiave di Estrazione
+    # Importante: Salviamo S_LL_orig come una lista/array di 3 vettori (uno per B, G, R)
+    embedding_data = {
+        'U_wm': U_wm_save,  # Matrice U del watermark (uguale per tutti)
+        'V_wm': V_wm_save,  # Matrice V del watermark (uguale per tutti)
+        'S_LL_orig': np.array(S_LL_orig_list),  # Matrice 3xN: S originale per ogni canale
+        'alpha': alpha,
+        'shape_wm': wm_shape_save
+    }
+
+    save_key(output_key, embedding_data)
+    print(f"Immagine salvata in: {output_png}")
+    print(f"Chiave salvata in: {output_key}")
+
+    return output_png
+
 # --- FASE DI ESTRAZIONE ---
 
 def extract_watermark_dwt_svd(watermarked_image, **kwargs):
@@ -175,15 +275,89 @@ def extract_watermark_dwt_svd(watermarked_image, **kwargs):
     return wm_extracted
 
 
+def extract_watermark_color_dwt_svd(watermarked_image, **kwargs):
+    """
+    Estrae la filigrana dai 3 canali di un'immagine a colori e ne fa la media.
+    """
+
+    # --- 1. Caricamento Dati Chiave ---
+    if 'embedding_data' in kwargs.keys():
+        embedding_data = kwargs['embedding_data']
+    elif 'key_path' in kwargs.keys():
+        embedding_data = load_key(kwargs['key_path'])
+    else:
+        raise ValueError("Devi fornire il percorso del file chiave (.npz) o i dati embedding_data.")
+
+    # Recupero dati comuni
+    U_wm = embedding_data['U_wm']
+    V_wm = embedding_data['V_wm']
+    alpha = embedding_data['alpha']
+    shape_wm = embedding_data['shape_wm']  # (H, W) originale della filigrana ridimensionata
+
+    # Recupero i valori singolari originali (Ora è una matrice 3xN: 3 canali)
+    S_LL_orig_matrix = embedding_data['S_LL_orig']
+
+    # --- 2. Pre-elaborazione ---
+    # Convertiamo in float32 e normalizziamo
+    watermarked_image = watermarked_image.astype(np.float32) / 255.0
+
+    # Separiamo i canali (Blue, Green, Red)
+    channels = cv2.split(watermarked_image)
+
+    extracted_candidates = []
+
+    # --- 3. Ciclo di Estrazione per ogni Canale ---
+    for i, channel in enumerate(channels):
+
+        # A. DWT sul canale attaccato
+        coeffs_att = pywt.dwt2(channel, 'haar')
+        LL_att, _ = coeffs_att
+
+        # B. Resize di sicurezza (fondamentale se l'attacco ha cambiato la geometria)
+        # Se LL_att ha dimensioni diverse da quelle attese, ridimensioniamo
+        target_h, target_w = shape_wm[0], shape_wm[1]
+        if LL_att.shape != (target_h, target_w):
+            LL_att = cv2.resize(LL_att, (target_w, target_h))
+
+        # C. SVD sulla banda LL
+        _, S_LL_att, _ = np.linalg.svd(LL_att, full_matrices=False)
+
+        # D. Recupero valori originali specifici per questo canale
+        # Se S_LL_orig_matrix ha shape (3, N), prendiamo la riga i-esima
+        if S_LL_orig_matrix.ndim == 2:
+            S_LL_orig_channel = S_LL_orig_matrix[i]
+        else:
+            # Fallback nel caso si stia usando una vecchia chiave monocromatica
+            S_LL_orig_channel = S_LL_orig_matrix
+
+        # E. Formula inversa: S_wm = (S_att - S_host) / alpha
+        min_len = min(len(S_LL_att), len(S_LL_orig_channel))
+        S_wm_extracted = (S_LL_att[:min_len] - S_LL_orig_channel[:min_len]) / alpha
+
+        # F. Ricostruzione filigrana parziale
+        Sigma_wm_extracted = np.diag(S_wm_extracted)
+
+        # U_wm e V_wm sono comuni per tutti i canali
+        wm_layer = np.dot(U_wm[:, :min_len], np.dot(Sigma_wm_extracted, V_wm[:min_len, :]))
+
+        extracted_candidates.append(wm_layer)
+
+    # --- 4. Fusione dei Risultati (Averaging) ---
+    # Abbiamo 3 estrazioni (spesso rumorose). La media pulisce il rumore e rinforza il segnale.
+    wm_average = np.mean(extracted_candidates, axis=0)
+
+    # --- 5. Post-processing ---
+    # Normalizzazione e conversione in uint8 [0-255]
+    wm_final = np.clip(wm_average * 255, 0, 255).astype(np.uint8)
+
+    return wm_final
 
 def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, output_dir_path : Path) -> None:
 
     if not output_dir_path.exists():
         os.makedirs(output_dir_path)
 
-
-
-    watermarked_img_path: Path = apply_watermark(host_path, output_dir_path, watermark_path)
+    watermarked_img_path: Path = apply_watermark_color_svd(host_path, output_dir_path, watermark_path)
 
     attacks = apply_attacks(watermarked_img_path)
 
@@ -195,7 +369,7 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
     wm_original_resized = cv2.resize(cv2.imread(str(watermark_path), cv2.IMREAD_GRAYSCALE),
                                      embedding_data['shape_wm'])
     extract_parameters = {'embedding_data':embedding_data,'key_path': key_path}
-    context = SaveAttackContext(attacks, output_dir_path, extract_watermark_dwt_svd, extract_parameters)
+    context = SaveAttackContext(attacks, output_dir_path, extract_watermark_color_dwt_svd, extract_parameters)
     output_file_dict: dict[str,Path] = save_and_compare(context)
 
     for key, value in output_file_dict.items():
