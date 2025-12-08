@@ -10,16 +10,19 @@ from skimage.metrics import structural_similarity as ssim
 def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
     """Applica una serie di attacchi per testare la robustezza."""
     attacks = {}
-    watermark_img = cv2.imread(str(watermarked_img_path), cv2.IMREAD_GRAYSCALE)
+    watermark_img = cv2.imread(str(watermarked_img_path))
 
     # 1. Compressione JPEG
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]  # Qualità 50 (media)
     _, encimg = cv2.imencode('.jpg', watermark_img, encode_param)
-    img_jpeg = cv2.imdecode(encimg, 0)  # 0 = load as grayscale
+
+    img_jpeg = cv2.imdecode(encimg, cv2.IMREAD_COLOR)
     attacks['JPEG (Q=50)'] = img_jpeg
 
     # 2. Rumore Sale e Pepe
-    noise = np.zeros(watermark_img.shape, np.uint8)
+    rows, cols = watermark_img.shape[:2]
+    noise = np.zeros((rows, cols), np.uint8)
+
     cv2.randu(noise, 0, 255)
     img_noise = watermark_img.copy()
     img_noise[noise < 10] = 0  # Pepper
@@ -29,7 +32,6 @@ def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
     # 3. Rotazione (Leggera) + Crop automatico (simulato dal resize implicito in visualizzazione)
     # Nota: La rotazione pesante disallinea i pixel per la DWT.
     # Senza un algoritmo di riallineamento, SVD resiste solo a piccole rotazioni.
-    rows, cols = watermark_img.shape
     M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 2, 1)  # 2 gradi
     img_rot = cv2.warpAffine(watermark_img, M, (cols, rows))
     attacks['Rotation (2 deg)'] = img_rot

@@ -8,6 +8,55 @@ from classes.dataclass import SaveAttackContext
 from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr
 
 
+def apply_watermark_color(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
+    """
+    Applica un watermark nei LSB di tutti i canali (RGB) di un'immagine a colori.
+    """
+
+    # 1. Carica l'immagine originale a COLORI
+    # OpenCV carica in formato BGR (Blue, Green, Red)
+    original_img = cv2.imread(str(input_image_path))
+    h, w, _ = original_img.shape
+
+    # 2. Carica il watermark in scala di grigi
+    watermark_img = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
+
+    # IMPORTANTE: Ridimensiona il watermark per combaciare con l'immagine originale
+    # Se le dimensioni non coincidono, le operazioni bitwise daranno errore
+    if watermark_img.shape != (h, w):
+        watermark_img = cv2.resize(watermark_img, (w, h))
+
+    # 3. Prepara i bit del watermark (0 o 1) prendendo il MSB
+    # (watermark_img >> 7) sposta il bit 7 in posizione 0. & 1 pulisce il resto.
+    watermark_bit = (watermark_img >> 7) & 1
+
+    # 4. Espande il watermark da (H, W) a (H, W, 3)
+    # Crea una matrice a 3 canali dove ogni canale contiene gli stessi bit del watermark
+    watermark_3ch = np.dstack([watermark_bit, watermark_bit, watermark_bit])
+
+    # 5. Applica il watermark
+    # (original_img & 254) -> Mette a 0 l'ultimo bit di tutti i canali dell'immagine originale
+    # | watermark_3ch      -> Inserisce il bit del watermark (0 o 1) nella posizione LSB
+    watermarked_img = (original_img & 254) | watermark_3ch
+
+    # === Verifica / Debug ===
+    # Estraiamo i LSB dell'immagine risultante (basta un canale qualsiasi per visualizzarlo, dato che sono uguali)
+    lsb_extracted = (watermarked_img[:, :, 0] & 1) * 255
+    lsb_img = Image.fromarray(lsb_extracted.astype(np.uint8))
+
+    # === Salvataggio ===
+    os.makedirs(output_dir_path, exist_ok=True)
+
+    output_path = output_dir_path / 'watermarked_img_color.png'
+
+    # Salva l'immagine finale a colori
+    cv2.imwrite(str(output_path), watermarked_img)
+
+    # Salva l'estrazione del watermark per conferma
+    lsb_img.save(output_dir_path / 'watermark_extracted_check.png')
+
+    return output_path
+
 #cambiare l'input con un path di un immagine
 def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
     """
@@ -50,7 +99,7 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
     if not output_dir_path.exists():
         os.makedirs(output_dir_path)
 
-    watermarked_img_path: Path = apply_watermark(input_image_path=host_path,output_dir_path=output_dir_path, watermark_image_path=watermark_path)
+    watermarked_img_path: Path = apply_watermark_color(input_image_path=host_path,output_dir_path=output_dir_path, watermark_image_path=watermark_path)
 
     attacks = apply_attacks(watermarked_img_path)
 
