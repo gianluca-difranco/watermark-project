@@ -61,6 +61,32 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
     return output_file_dict
 
 
+def calculate_ssim_color(img1, img2):
+    # Scikit-image richiede immagini in float [0, 1] e RGB
+    img1_float = img1.astype(np.float64) / 255.0
+    img2_float = img2.astype(np.float64) / 255.0
+
+    img1_float32 = img1_float.astype(np.float32)
+    img2_float32 = img2_float.astype(np.float32)
+
+    # Se le immagini sono BGR (OpenCV standard), converti in RGB per skimage
+    img1_rgb = cv2.cvtColor(img1_float32, cv2.COLOR_BGR2RGB)
+    img2_rgb = cv2.cvtColor(img2_float32, cv2.COLOR_BGR2RGB)
+
+
+    # Calcola SSIM come media BGR/RGB (metodo A, meno percettivamente corretto)
+    ssim_value = ssim(
+        img1_rgb,
+        img2_rgb,
+        data_range=1.0,
+        channel_axis=-1,
+        multichannel=True
+
+    )
+    print(f"SSIM: {ssim_value:.4f}")
+    return ssim_value
+
+
 def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
     try:
         score = ssim(img1, img2, data_range=255)

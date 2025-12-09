@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr
+from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr, calculate_ssim_color
 
 
 def apply_watermark_color(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
@@ -13,47 +13,38 @@ def apply_watermark_color(input_image_path: Path, output_dir_path: Path, waterma
     Applica un watermark nei LSB di tutti i canali (RGB) di un'immagine a colori.
     """
 
-    # 1. Carica l'immagine originale a COLORI
-    # OpenCV carica in formato BGR (Blue, Green, Red)
+    # Immagine caricata a colori
     original_img = cv2.imread(str(input_image_path))
+    # necessario recuperare h,w in questo modo perché viene restituita una tripla essendo a colori
     h, w, _ = original_img.shape
 
-    # 2. Carica il watermark in scala di grigi
+    # watermark caricato in scala di grigi
     watermark_img = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
 
-    # IMPORTANTE: Ridimensiona il watermark per combaciare con l'immagine originale
-    # Se le dimensioni non coincidono, le operazioni bitwise daranno errore
+    # Verifico che immagine e watermark abbiano la stessa dimensione
     if watermark_img.shape != (h, w):
         watermark_img = cv2.resize(watermark_img, (w, h))
 
-    # 3. Prepara i bit del watermark (0 o 1) prendendo il MSB
-    # (watermark_img >> 7) sposta il bit 7 in posizione 0. & 1 pulisce il resto.
+    # Recupero il bit del watermark da applicare
     watermark_bit = (watermark_img >> 7) & 1
 
-    # 4. Espande il watermark da (H, W) a (H, W, 3)
-    # Crea una matrice a 3 canali dove ogni canale contiene gli stessi bit del watermark
+
+    # Creo una matrice a 3 canali dove ogni canale contiene gli stessi bit del watermark
     watermark_3ch = np.dstack([watermark_bit, watermark_bit, watermark_bit])
 
-    # 5. Applica il watermark
-    # (original_img & 254) -> Mette a 0 l'ultimo bit di tutti i canali dell'immagine originale
-    # | watermark_3ch      -> Inserisce il bit del watermark (0 o 1) nella posizione LSB
+    # Applico il watermark
+    # Metto a 0 l'ultimo bit di tutti i canali dell'immagine originale
+    # ed inserisco il bit del watermark (0 o 1) nella posizione LSB
     watermarked_img = (original_img & 254) | watermark_3ch
 
-    # === Verifica / Debug ===
-    # Estraiamo i LSB dell'immagine risultante (basta un canale qualsiasi per visualizzarlo, dato che sono uguali)
-    lsb_extracted = (watermarked_img[:, :, 0] & 1) * 255
-    lsb_img = Image.fromarray(lsb_extracted.astype(np.uint8))
 
-    # === Salvataggio ===
     os.makedirs(output_dir_path, exist_ok=True)
 
     output_path = output_dir_path / 'watermarked_img_color.png'
 
-    # Salva l'immagine finale a colori
+    # Salvo l'immagine finale a colori
     cv2.imwrite(str(output_path), watermarked_img)
 
-    # Salva l'estrazione del watermark per conferma
-    lsb_img.save(output_dir_path / 'watermark_extracted_check.png')
 
     return output_path
 
@@ -91,7 +82,6 @@ def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_ima
 
 
 def extract_watermark(image: np.ndarray) -> np.ndarray:
-    # === Estrae la matrice dei bit meno significativi (LSB) originali ===
     trans_lsb_original = (image & 1) * 255
     return trans_lsb_original.astype(np.uint8)
 
@@ -101,13 +91,16 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
 
     watermarked_img_path: Path = apply_watermark_color(input_image_path=host_path,output_dir_path=output_dir_path, watermark_image_path=watermark_path)
 
+    # verifico quanto differisce l'immagine originale e quella con watermark
+    calculate_ssim_color(cv2.imread(str(host_path)), cv2.imread(str(watermarked_img_path)))
+
     attacks = apply_attacks(watermarked_img_path)
 
 
     context = SaveAttackContext(attacks, output_dir_path, extract_watermark)
     output_file_dict: dict[str,Path] = save_and_compare(context)
-    image_watermarked = cv2.imread(str(watermarked_img_path), cv2.IMREAD_GRAYSCALE)
+    image_watermarked = cv2.imread(str(watermarked_img_path))
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
-            calculate_ssim(image_watermarked, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))
-            calculate_psnr(image_watermarked, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))
+            calculate_ssim_color(image_watermarked, cv2.imread(str(value)))
+            calculate_psnr(image_watermarked, cv2.imread(str(value)))
