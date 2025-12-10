@@ -6,7 +6,7 @@ import cv2
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr
+from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr, calculate_ssim_color
 
 
 def resize_watermark(wm, target_shape):
@@ -359,6 +359,7 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
 
     watermarked_img_path: Path = apply_watermark_color_svd(host_path, output_dir_path, watermark_path)
 
+    print("-------------------------------------------------------------")
     attacks = apply_attacks(watermarked_img_path)
 
 
@@ -368,11 +369,15 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
 
     wm_original_resized = cv2.resize(cv2.imread(str(watermark_path), cv2.IMREAD_GRAYSCALE),
                                      embedding_data['shape_wm'])
+
+    cv2.imwrite(str(watermark_path.with_name("watermark_resize.png")), wm_original_resized)
     extract_parameters = {'embedding_data':embedding_data,'key_path': key_path}
     context = SaveAttackContext(attacks, output_dir_path, extract_watermark_color_dwt_svd, extract_parameters)
     output_file_dict: dict[str,Path] = save_and_compare(context)
 
+    print("-------------------------------------------------------------")
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
-            calculate_ssim(wm_original_resized, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))
-            calculate_psnr(wm_original_resized, cv2.imread(str(value), cv2.IMREAD_GRAYSCALE))
+            calculate_ssim_color(watermark_path, value)
+            calculate_psnr(watermark_path, value)
+            print("-------------------------------------------------------------")
