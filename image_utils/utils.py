@@ -61,10 +61,14 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
     return output_file_dict
 
 
-def calculate_ssim_color(img1, img2):
-    # Scikit-image richiede immagini in float [0, 1] e RGB
-    img1_float = img1.astype(np.float64) / 255.0
-    img2_float = img2.astype(np.float64) / 255.0
+def calculate_ssim_color(img1: Path, img2: Path):
+
+    image_1 = cv2.imread(str(img1))
+    image_2 = cv2.imread(str(img2))
+
+
+    img1_float = image_1.astype(np.float64) / 255.0
+    img2_float = image_2.astype(np.float64) / 255.0
 
     img1_float32 = img1_float.astype(np.float32)
     img2_float32 = img2_float.astype(np.float32)
@@ -83,7 +87,7 @@ def calculate_ssim_color(img1, img2):
         multichannel=True
 
     )
-    print(f"SSIM: {ssim_value:.4f}")
+    print(f"SSIM: {ssim_value:.4f} | tra {img1.name} e {img2.name}")
     return ssim_value
 
 
@@ -98,24 +102,26 @@ def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
     return score
 
 
-def calculate_mse(imageA, imageB):
+def calculate_mse(image_a:Path, image_b:Path):
     """
     Mean Squared Error: Calcola la media degli errori quadrati tra i pixel corrispondenti.
     Un valore più basso è migliore.
     """
+    image_1 = cv2.imread(str(image_a))
+    image_2 = cv2.imread(str(image_b))
     # Assicurarsi che le immagini siano float per evitare overflow
-    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
-    err /= float(imageA.shape[0] * imageA.shape[1])
-    print(f"MSE: {err:.4f}")
+    err = np.sum((image_1.astype("float") - image_2.astype("float")) ** 2)
+    err /= float(image_1.shape[0] * image_1.shape[1])
+    print(f"MSE: {err:.4f} | tra {image_a.name} e {image_b.name}")
     return err
 
 
-def calculate_psnr(imageA, imageB):
+def calculate_psnr(image_a:Path, image_b:Path):
     """
     Peak Signal-to-Noise Ratio: Misura il rapporto tra la potenza massima del segnale e il rumore.
     Valori sopra i 30dB indicano solitamente un'ottima qualità invisibile.
     """
-    mse = calculate_mse(imageA, imageB)
+    mse = calculate_mse(image_a, image_b)
 
     # Se le immagini sono identiche, MSE è 0 e PSNR è infinito
     if mse == 0:
@@ -123,5 +129,5 @@ def calculate_psnr(imageA, imageB):
 
     max_pixel = 255.0
     psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
-    print(f"PSNR: {psnr:.4f}")
+    print(f"PSNR: {psnr:.4f} | tra {image_a.name} e {image_b.name}")
     return psnr

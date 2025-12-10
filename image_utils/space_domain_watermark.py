@@ -91,16 +91,19 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
 
     watermarked_img_path: Path = apply_watermark_color(input_image_path=host_path,output_dir_path=output_dir_path, watermark_image_path=watermark_path)
 
-    # verifico quanto differisce l'immagine originale e quella con watermark
-    calculate_ssim_color(cv2.imread(str(host_path)), cv2.imread(str(watermarked_img_path)))
+    # verifico quanto differisce l'immagine originale da quella con watermark
+    calculate_ssim_color(host_path,watermarked_img_path)
+    calculate_psnr(host_path, watermarked_img_path)
 
+    print("-------------------------------------------------------------")
     attacks = apply_attacks(watermarked_img_path)
 
 
     context = SaveAttackContext(attacks, output_dir_path, extract_watermark)
     output_file_dict: dict[str,Path] = save_and_compare(context)
-    image_watermarked = cv2.imread(str(watermarked_img_path))
+    print("-------------------------------------------------------------")
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
-            calculate_ssim_color(image_watermarked, cv2.imread(str(value)))
-            calculate_psnr(image_watermarked, cv2.imread(str(value)))
+            calculate_ssim_color(watermark_path, value)
+            calculate_psnr(watermark_path, value)
+            print("-------------------------------------------------------------")
