@@ -10,26 +10,26 @@ from skimage.metrics import structural_similarity as ssim
 def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
     """Applica una serie di attacchi per testare la robustezza."""
     attacks = {}
-    watermark_img = cv2.imread(str(watermarked_img_path), cv2.IMREAD_GRAYSCALE)
+    watermark_img = cv2.imread(str(watermarked_img_path))
 
     # 1. Compressione JPEG
     encode_param = [int(cv2.IMWRITE_JPEG_QUALITY), 50]  # Qualità 50 (media)
     _, encimg = cv2.imencode('.jpg', watermark_img, encode_param)
-    img_jpeg = cv2.imdecode(encimg, 0)  # 0 = load as grayscale
+
+    img_jpeg = cv2.imdecode(encimg, cv2.IMREAD_COLOR)
     attacks['JPEG (Q=50)'] = img_jpeg
 
     # 2. Rumore Sale e Pepe
-    noise = np.zeros(watermark_img.shape, np.uint8)
+    rows, cols = watermark_img.shape[:2]
+    noise = np.zeros((rows, cols), np.uint8)
+
     cv2.randu(noise, 0, 255)
     img_noise = watermark_img.copy()
     img_noise[noise < 10] = 0  # Pepper
     img_noise[noise > 245] = 255  # Salt
     attacks['Salt & Pepper'] = img_noise
 
-    # 3. Rotazione (Leggera) + Crop automatico (simulato dal resize implicito in visualizzazione)
-    # Nota: La rotazione pesante disallinea i pixel per la DWT.
-    # Senza un algoritmo di riallineamento, SVD resiste solo a piccole rotazioni.
-    rows, cols = watermark_img.shape
+    # 3. Rotazione
     M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 2, 1)  # 2 gradi
     img_rot = cv2.warpAffine(watermark_img, M, (cols, rows))
     attacks['Rotation (2 deg)'] = img_rot
@@ -59,41 +59,60 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
     return output_file_dict
 
 
-def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
-    try:
-        score = ssim(img1, img2, data_range=255)
-        print(f"-> Qualità Filigrana Estratta (SSIM): {score:.4f}")
-    except ValueError as e:
-        print(f"-> Errore calcolo SSIM (dimensioni diverse?): {e}")
-        score = 0.0
+def calculate_ssim(img1: Path, img2: Path):
 
-    return score
+    image_1 = cv2.imread(str(img1))
+    image_2 = cv2.imread(str(img2))
 
 
-def calculate_mse(imageA, imageB):
+    img1_float = image_1.astype(np.float64) / 255.0
+    img2_float = image_2.astype(np.float64) / 255.0
+
+    img1_float32 = img1_float.astype(np.float32)
+    img2_float32 = img2_float.astype(np.float32)
+
+    img1_rgb = cv2.cvtColor(img1_float32, cv2.COLOR_BGR2RGB)
+    img2_rgb = cv2.cvtColor(img2_float32, cv2.COLOR_BGR2RGB)
+
+
+    # Calcolo SSIM come media BGR/RGB (metodo A, meno percettivamente corretto)
+    ssim_value = ssim(
+        img1_rgb,
+        img2_rgb,
+        data_range=1.0,
+        channel_axis=-1,
+        multichannel=True
+
+    )
+    print(f"SSIM: {ssim_value:.4f} | tra {img1.name} e {img2.name}")
+    return ssim_value
+
+
+def calculate_mse(image_a:Path, image_b:Path):
     """
     Mean Squared Error: Calcola la media degli errori quadrati tra i pixel corrispondenti.
     Un valore più basso è migliore.
     """
+    image_1 = cv2.imread(str(image_a))
+    image_2 = cv2.imread(str(image_b))
     # Assicurarsi che le immagini siano float per evitare overflow
-    err = np.sum((imageA.astype("float") - imageB.astype("float")) ** 2)
-    err /= float(imageA.shape[0] * imageA.shape[1])
-    print(f"MSE: {err:.4f}")
+    err = np.sum((image_1.astype("float") - image_2.astype("float")) ** 2)
+    err /= float(image_1.shape[0] * image_1.shape[1])
+    print(f"MSE: {err:.4f} | tra {image_a.name} e {image_b.name}")
     return err
 
 
-def calculate_psnr(imageA, imageB):
+def calculate_psnr(image_a:Path, image_b:Path):
     """
     Peak Signal-to-Noise Ratio: Misura il rapporto tra la potenza massima del segnale e il rumore.
     Valori sopra i 30dB indicano solitamente un'ottima qualità invisibile.
     """
-    mse = calculate_mse(imageA, imageB)
+    mse = calculate_mse(image_a, image_b)
 
-    # Se le immagini sono identiche, MSE è 0 e PSNR è infinito
     if mse == 0:
         return 100
 
     max_pixel = 255.0
     psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
-    print(f"PSNR: {psnr:.4f}")
+    print(f"PSNR: {psnr:.4f} | tra {image_a.name} e {image_b.name}")
     return psnr
