@@ -6,7 +6,7 @@ import cv2
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr, calculate_ssim_color
+from image_utils.utils import apply_attacks, save_and_compare, calculate_psnr, calculate_ssim
 
 
 def resize_watermark(wm, target_shape):
@@ -280,7 +280,9 @@ def extract_watermark_color_dwt_svd(watermarked_image, **kwargs):
     Estrae la filigrana dai 3 canali di un'immagine a colori e ne fa la media.
     """
 
-    # --- 1. Caricamento Dati Chiave ---
+    # --- 1. Recupero della chiave ---
+    # Per prima cosa, controllo se mi sono stati passati i dati della chiave direttamente
+    # o se devo caricarli da un file
     if 'embedding_data' in kwargs.keys():
         embedding_data = kwargs['embedding_data']
     elif 'key_path' in kwargs.keys():
@@ -288,66 +290,78 @@ def extract_watermark_color_dwt_svd(watermarked_image, **kwargs):
     else:
         raise ValueError("Devi fornire il percorso del file chiave (.npz) o i dati embedding_data.")
 
-    # Recupero dati comuni
+    # recupero i dati necessari dalla chiave: le matrici U e V per ricostruire
+    # l'immagine e il fattore 'alpha' che indica quanto era forte la filigrana.
     U_wm = embedding_data['U_wm']
     V_wm = embedding_data['V_wm']
     alpha = embedding_data['alpha']
     shape_wm = embedding_data['shape_wm']  # (H, W) originale della filigrana ridimensionata
 
-    # Recupero i valori singolari originali (Ora è una matrice 3xN: 3 canali)
+    # Recupero i valori dell'immagine originale
+    # Questa matrice contiene i valori per tutti e 3 i canali di colore.
     S_LL_orig_matrix = embedding_data['S_LL_orig']
 
-    # --- 2. Pre-elaborazione ---
-    # Convertiamo in float32 e normalizziamo
+    # --- 2. Preparazione dell'immagine ---
+    # Converto l'immagine in numeri decimali (tra 0 e 1) per poter fare calcoli precisi.
     watermarked_image = watermarked_image.astype(np.float32) / 255.0
 
-    # Separiamo i canali (Blue, Green, Red)
+    # Separo i canali (Blu, Verde, Rosso)
     channels = cv2.split(watermarked_image)
 
     extracted_candidates = []
 
-    # --- 3. Ciclo di Estrazione per ogni Canale ---
+    # --- 3. Elaborazione Canale per Canale ---
     for i, channel in enumerate(channels):
 
-        # A. DWT sul canale attaccato
+        # A. Analisi Wavelet (DWT)
+        # Applico la trasformata Wavelet per scomporre il canale.
+        # Mi interessa solo la parte 'LL' (bassa frequenza), che contiene la struttura principale dell'immagine.
         coeffs_att = pywt.dwt2(channel, 'haar')
         LL_att, _ = coeffs_att
 
-        # B. Resize di sicurezza (fondamentale se l'attacco ha cambiato la geometria)
-        # Se LL_att ha dimensioni diverse da quelle attese, ridimensioniamo
+        # B. Controllo Dimensioni (Sicurezza)
+        # Se l'immagine è stata ridimensionata o attaccata, le dimensioni potrebbero non coincidere.
+        # forzo i dati ad avere la grandezza che mi aspetto, per evitare errori.
         target_h, target_w = shape_wm[0], shape_wm[1]
         if LL_att.shape != (target_h, target_w):
             LL_att = cv2.resize(LL_att, (target_w, target_h))
 
-        # C. SVD sulla banda LL
+
+        # C. Decomposizione SVD
+        # Scompongo questa parte dell'immagine nei suoi componenti matematici fondamentali (SVD).
+        # Ottengo 'S_LL_att', che sono i valori singolari dell'immagine
         _, S_LL_att, _ = np.linalg.svd(LL_att, full_matrices=False)
 
-        # D. Recupero valori originali specifici per questo canale
-        # Se S_LL_orig_matrix ha shape (3, N), prendiamo la riga i-esima
+        # D. Selezione dati originali corretti
+        # Prendo i valori singolari originali corrispondenti allo stesso colore (canale) che sto elaborando adesso.
         if S_LL_orig_matrix.ndim == 2:
             S_LL_orig_channel = S_LL_orig_matrix[i]
         else:
-            # Fallback nel caso si stia usando una vecchia chiave monocromatica
+            # Caso di sicurezza per vecchie chiavi in bianco e nero.
             S_LL_orig_channel = S_LL_orig_matrix
 
-        # E. Formula inversa: S_wm = (S_att - S_host) / alpha
+
+        # E.  Formula Inversa: sottraggo i valori dell'immagine originale da quelli dell'immagine attuale.
+        # La differenza, divisa per la forza 'alpha', mi restituisce i valori del watermark.
         min_len = min(len(S_LL_att), len(S_LL_orig_channel))
         S_wm_extracted = (S_LL_att[:min_len] - S_LL_orig_channel[:min_len]) / alpha
 
-        # F. Ricostruzione filigrana parziale
+        # F. Ricostruzione
+        # Metto i valori estratti in una matrice diagonale.
         Sigma_wm_extracted = np.diag(S_wm_extracted)
 
-        # U_wm e V_wm sono comuni per tutti i canali
+        # Uso le matrici U e V (che avevo salvato nella chiave) per ricostruire visivamente la filigrana di questo canale.
         wm_layer = np.dot(U_wm[:, :min_len], np.dot(Sigma_wm_extracted, V_wm[:min_len, :]))
 
         extracted_candidates.append(wm_layer)
 
-    # --- 4. Fusione dei Risultati (Averaging) ---
-    # Abbiamo 3 estrazioni (spesso rumorose). La media pulisce il rumore e rinforza il segnale.
+    # --- 4. Unione dei Risultati ---
+    # Ora ho 3 versioni della filigrana estratta (una dal Blu, una dal Verde, una dal Rosso).
+    # Faccio la media matematica tra loro
     wm_average = np.mean(extracted_candidates, axis=0)
 
     # --- 5. Post-processing ---
-    # Normalizzazione e conversione in uint8 [0-255]
+    # Normalizzazione e conversione in [0-255]
     wm_final = np.clip(wm_average * 255, 0, 255).astype(np.uint8)
 
     return wm_final
@@ -378,6 +392,6 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
     print("-------------------------------------------------------------")
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
-            calculate_ssim_color(watermark_path, value)
+            calculate_ssim(watermark_path, value)
             calculate_psnr(watermark_path, value)
             print("-------------------------------------------------------------")

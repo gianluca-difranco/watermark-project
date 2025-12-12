@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_ssim, calculate_psnr, calculate_ssim_color
+from image_utils.utils import apply_attacks, save_and_compare, calculate_psnr, calculate_ssim
 
 
 def apply_watermark_color(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
@@ -48,27 +48,23 @@ def apply_watermark_color(input_image_path: Path, output_dir_path: Path, waterma
 
     return output_path
 
-#cambiare l'input con un path di un immagine
 def apply_watermark(input_image_path: Path, output_dir_path: Path, watermark_image_path: Path) -> Path:
-    """
-    This function draw a word/phrase in image's LSB.
-    """
+
 
     bw_original = cv2.imread(str(input_image_path), cv2.IMREAD_GRAYSCALE)
-    # === Crea la versione originale in bianco e nero ===
-    # bw_original = Image.fromarray(channel.astype(np.uint8))
 
-    # === Estrae la matrice dei bit meno significativi (LSB) originali ===
+    # === Estraggo la matrice dei bit meno significativi (LSB) originali ===
     lsb_original = (bw_original & 1) * 255
     lsb_original_img = Image.fromarray(lsb_original.astype(np.uint8))
 
-    # === Crea immagine con testo nero su sfondo bianco ===
+    # === Creo immagine con testo nero su sfondo bianco ===
     watermark_image = cv2.imread(str(watermark_image_path), cv2.IMREAD_GRAYSCALE)
     msb_plane = (watermark_image >> 7) & 1
+
     # === Sostituisce i LSB del canale originale con il testo ===
     channel_modified = (bw_original & 254) | msb_plane
 
-    # === Ricrea immagine modificata e la sua versione dei LSB ===
+    # === Ricreo immagine modificata e la sua versione dei LSB ===
     bw_modified = Image.fromarray(channel_modified.astype(np.uint8))
     lsb_modified = (channel_modified & 1) * 255
     lsb_modified_img = Image.fromarray(lsb_modified.astype(np.uint8))
@@ -92,7 +88,7 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
     watermarked_img_path: Path = apply_watermark_color(input_image_path=host_path,output_dir_path=output_dir_path, watermark_image_path=watermark_path)
 
     # verifico quanto differisce l'immagine originale da quella con watermark
-    calculate_ssim_color(host_path,watermarked_img_path)
+    calculate_ssim(host_path, watermarked_img_path)
     calculate_psnr(host_path, watermarked_img_path)
 
     print("-------------------------------------------------------------")
@@ -104,6 +100,6 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
     print("-------------------------------------------------------------")
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
-            calculate_ssim_color(watermark_path, value)
+            calculate_ssim(watermark_path, value)
             calculate_psnr(watermark_path, value)
             print("-------------------------------------------------------------")

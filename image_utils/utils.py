@@ -29,9 +29,7 @@ def apply_attacks(watermarked_img_path: Path) -> dict[str,cv2.typing.MatLike]:
     img_noise[noise > 245] = 255  # Salt
     attacks['Salt & Pepper'] = img_noise
 
-    # 3. Rotazione (Leggera) + Crop automatico (simulato dal resize implicito in visualizzazione)
-    # Nota: La rotazione pesante disallinea i pixel per la DWT.
-    # Senza un algoritmo di riallineamento, SVD resiste solo a piccole rotazioni.
+    # 3. Rotazione
     M = cv2.getRotationMatrix2D((cols / 2, rows / 2), 2, 1)  # 2 gradi
     img_rot = cv2.warpAffine(watermark_img, M, (cols, rows))
     attacks['Rotation (2 deg)'] = img_rot
@@ -61,7 +59,7 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
     return output_file_dict
 
 
-def calculate_ssim_color(img1: Path, img2: Path):
+def calculate_ssim(img1: Path, img2: Path):
 
     image_1 = cv2.imread(str(img1))
     image_2 = cv2.imread(str(img2))
@@ -73,12 +71,11 @@ def calculate_ssim_color(img1: Path, img2: Path):
     img1_float32 = img1_float.astype(np.float32)
     img2_float32 = img2_float.astype(np.float32)
 
-    # Se le immagini sono BGR (OpenCV standard), converti in RGB per skimage
     img1_rgb = cv2.cvtColor(img1_float32, cv2.COLOR_BGR2RGB)
     img2_rgb = cv2.cvtColor(img2_float32, cv2.COLOR_BGR2RGB)
 
 
-    # Calcola SSIM come media BGR/RGB (metodo A, meno percettivamente corretto)
+    # Calcolo SSIM come media BGR/RGB (metodo A, meno percettivamente corretto)
     ssim_value = ssim(
         img1_rgb,
         img2_rgb,
@@ -89,17 +86,6 @@ def calculate_ssim_color(img1: Path, img2: Path):
     )
     print(f"SSIM: {ssim_value:.4f} | tra {img1.name} e {img2.name}")
     return ssim_value
-
-
-def calculate_ssim(img1: ndarray, img2: ndarray) -> float:
-    try:
-        score = ssim(img1, img2, data_range=255)
-        print(f"-> Qualità Filigrana Estratta (SSIM): {score:.4f}")
-    except ValueError as e:
-        print(f"-> Errore calcolo SSIM (dimensioni diverse?): {e}")
-        score = 0.0
-
-    return score
 
 
 def calculate_mse(image_a:Path, image_b:Path):
@@ -123,7 +109,6 @@ def calculate_psnr(image_a:Path, image_b:Path):
     """
     mse = calculate_mse(image_a, image_b)
 
-    # Se le immagini sono identiche, MSE è 0 e PSNR è infinito
     if mse == 0:
         return 100
 
