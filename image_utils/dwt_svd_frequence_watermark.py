@@ -6,7 +6,7 @@ import cv2
 from pathlib import Path
 
 from classes.dataclass import SaveAttackContext
-from image_utils.utils import apply_attacks, save_and_compare, calculate_psnr, calculate_ssim
+from image_utils.utils import apply_attacks, save_and_compare, calculate_psnr, calculate_ssim,show_watermark
 
 
 def resize_watermark(wm, target_shape):
@@ -390,8 +390,17 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
     output_file_dict: dict[str,Path] = save_and_compare(context)
 
     print("-------------------------------------------------------------")
+    attacked_images = [watermarked_img_path]
+    attacked_watermarks = [watermark_path]
     for key, value in output_file_dict.items():
         if key.startswith('extracted'):
+            attacked_watermarks.append(value)
             calculate_ssim(watermark_path, value)
             calculate_psnr(watermark_path, value)
             print("-------------------------------------------------------------")
+        else:
+            attacked_images.append(value)
+
+
+    show_watermark(attacked_images)
+    show_watermark(attacked_watermarks)

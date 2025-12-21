@@ -1,5 +1,7 @@
+from PIL import Image
 from numpy import ndarray
 from pathlib import Path
+import matplotlib.pyplot as plt
 import math
 from classes.dataclass import SaveAttackContext
 import cv2
@@ -61,8 +63,11 @@ def save_and_compare(context : SaveAttackContext) -> dict[str,Path]:
 
 def calculate_ssim(img1: Path, img2: Path):
 
+
     image_1 = cv2.imread(str(img1))
     image_2 = cv2.imread(str(img2))
+
+    image_1, image_2 = _image_resize(image_1, image_2)
 
 
     img1_float = image_1.astype(np.float64) / 255.0
@@ -75,7 +80,6 @@ def calculate_ssim(img1: Path, img2: Path):
     img2_rgb = cv2.cvtColor(img2_float32, cv2.COLOR_BGR2RGB)
 
 
-    # Calcolo SSIM come media BGR/RGB (metodo A, meno percettivamente corretto)
     ssim_value = ssim(
         img1_rgb,
         img2_rgb,
@@ -95,6 +99,10 @@ def calculate_mse(image_a:Path, image_b:Path):
     """
     image_1 = cv2.imread(str(image_a))
     image_2 = cv2.imread(str(image_b))
+
+
+    image_1, image_2 = _image_resize(image_1, image_2)
+
     # Assicurarsi che le immagini siano float per evitare overflow
     err = np.sum((image_1.astype("float") - image_2.astype("float")) ** 2)
     err /= float(image_1.shape[0] * image_1.shape[1])
@@ -107,6 +115,7 @@ def calculate_psnr(image_a:Path, image_b:Path):
     Peak Signal-to-Noise Ratio: Misura il rapporto tra la potenza massima del segnale e il rumore.
     Valori sopra i 30dB indicano solitamente un'ottima qualità invisibile.
     """
+
     mse = calculate_mse(image_a, image_b)
 
     if mse == 0:
@@ -116,3 +125,36 @@ def calculate_psnr(image_a:Path, image_b:Path):
     psnr = 20 * math.log10(max_pixel / math.sqrt(mse))
     print(f"PSNR: {psnr:.4f} | tra {image_a.name} e {image_b.name}")
     return psnr
+
+
+def _image_resize(image_a: ndarray, image_b: ndarray):
+    h1, w1 = image_a.shape[:2]
+    h2, w2 = image_b.shape[:2]
+
+    if (h1, w1) != (h2, w2):
+        # Scegliamo di ridimensionare l'immagine con più pixel per adattarla a quella più piccola
+        # (Questo preserva meglio la qualità rispetto all'upscaling)
+        if (h1 * w1) > (h2 * w2):
+            image_a = cv2.resize(image_a, (w2, h2), interpolation=cv2.INTER_AREA)
+        else:
+            image_b = cv2.resize(image_b, (w1, h1), interpolation=cv2.INTER_AREA)
+    return image_a, image_b
+
+
+def show_watermark(kwargs, grayscale=False):
+
+    images = [ Image.open(path) for path in kwargs]
+
+    plt.figure(figsize=(8, 4))
+    for i, image in enumerate(images):
+
+        plt.subplot(1, len(images), i+1)
+        if grayscale:
+            plt.imshow(image, cmap="gray")
+        else:
+            plt.imshow(image)
+        plt.axis("off")
+
+    plt.axis("off")
+    plt.tight_layout()
+    plt.show()
