@@ -110,4 +110,4 @@ def space_wm_attack_and_compare(host_path: Path, watermark_path:Path, output_dir
             attacked_images.append(value)
 
     show_watermark(attacked_images)
-    show_watermark(attacked_watermarks)
+    show_watermark(attacked_watermarks,grayscale=True)

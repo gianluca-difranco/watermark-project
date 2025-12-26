@@ -373,6 +373,11 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
 
     watermarked_img_path: Path = apply_watermark_color_svd(host_path, output_dir_path, watermark_path)
 
+    # verifico quanto differisce l'immagine originale da quella con watermark
+    calculate_ssim(host_path, watermarked_img_path)
+    calculate_psnr(host_path, watermarked_img_path)
+
+
     print("-------------------------------------------------------------")
     attacks = apply_attacks(watermarked_img_path)
 
@@ -403,4 +408,4 @@ def frequence_wm_attack_and_compare(host_path : Path, watermark_path : Path, out
 
 
     show_watermark(attacked_images)
-    show_watermark(attacked_watermarks)
+    show_watermark(attacked_watermarks,grayscale=True)
